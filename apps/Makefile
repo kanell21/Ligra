@@ -48,7 +48,7 @@ ALL= encoder decoder BFS BC BellmanFord Components Radii PageRank PageRankDelta 
 all: $(ALL)
 
 % : %.C $(COMMON)
-	$(PCC) $(PCFLAGS) -o $@ $<
+	$(PCC) $(PCFLAGS) -pthread -o $@ $<
 
 $(COMMON):
 	ln -s ../ligra/$@ .
