@@ -22,6 +22,7 @@
 // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "ligra.h"
+#include "sched.h"
 #include "pthread.h"
 struct BFS_F {
 	uintE* Parents;
@@ -40,15 +41,72 @@ struct BFS_F {
 struct thread_info{
 	int tid;
 	int thread_num;
-	thread_info(int _tid, int _thread_num) : tid(_tid), thread_num(_thread_num) {}
 };
 
 typedef struct thread_info t_info;
+
+inline void setaffinity_oncpu(int cpu)
+{
+	cpu_set_t cpu_mask;
+	int err;
+
+	CPU_ZERO(&cpu_mask);
+	CPU_SET(cpu, &cpu_mask);
+
+	err = sched_setaffinity(0, sizeof(cpu_set_t), &cpu_mask);
+	if (err) {
+		perror("sched_setaffinity");
+		exit(1);
+	}
+
+}
+
+
+inline void *BFS_worker(void *argv )
+{       
+	t_info *t = (t_info*) argv;
+	int thread_num = t->thread_num;
+	int id = t->tid;
+	setaffinity_oncpu(id);
+	printf("Tid = %d Argv = %p \n ", id, argv );
+
+}
+
+
+
+inline pthread_t * spawn_threads(int thread_num)
+{
+
+	pthread_t * thread =(pthread_t *) malloc(sizeof(pthread_t)*thread_num);
+	int i;
+	t_info* t; 
+	t = (t_info *)malloc(sizeof(t_info) * thread_num);
+	for (i = 0; i < thread_num; i++) {
+		//printf("t address = %p\n", &t);
+		t[i].tid = i;
+		t[i].thread_num = thread_num;
+		int ret = pthread_create(&thread[i], NULL,BFS_worker,(void*) &t[i]);
+		if(ret != 0) {
+			printf ("Create pthread error!\n");
+			exit (1);
+		}
+	}
+	return thread;
+}
+
+inline void join_threads(pthread_t* threads, int thread_num)
+{
+	int i;
+	for (i = 0; i < thread_num; i++) pthread_join(threads[i],NULL);
+
+}
 
 template <class vertex>
 void Compute(graph<vertex>& GA, commandLine P) {
 	long start = P.getOptionLongValue("-r",0);
 	long n = GA.n;
+	pthread_t* t = spawn_threads(10);
+	join_threads(t,10);
 	//creates Parents array, initialized to all -1, except for start
 	uintE* Parents = newA(uintE,n);
 	parallel_for(long i=0;i<n;i++) Parents[i] = UINT_E_MAX;
@@ -62,39 +120,6 @@ void Compute(graph<vertex>& GA, commandLine P) {
 	Frontier.del();
 	free(Parents); 
 }
-
-void *BFS_worker(void *argv )
-{
-	t_info *t = (t_info*) argv;
-	int thread_num = t->thread_num;
-	int id = t->tid;
-	printf("Tid = ");
-
-}
-
-
-
-template <class vertex>
-void spawn_threads(int thread_num)
-{
-	
-	pthread_t * thread = malloc(sizeof(pthread_t)*thread_num);
-	int i;
-	t_info *temp;
-	for (i = 0; i < thread_num; i++) {
-		t_info t(i,thread_num);
-		temp = t;
-		int ret = pthread_create(&thread[i], NULL,BFS_worker,(void*) temp);
-		if(ret != 0) {
-			printf ("Create pthread error!\n");
-			exit (1);
-		}
-	}
-}
-
-
-
-
 
 
 
