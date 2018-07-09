@@ -152,6 +152,55 @@ vertexSubsetData<data> edgeMapSparse(graph<vertex>& GA, vertex* frontierVertices
   }
 }
 
+
+template <class data, class vertex, class VS, class F>
+vertexSubsetData<data> edgeMapSparsePosix(graph<vertex>& GA, vertex* frontierVertices, VS& indices,
+        uintT* degrees, uintT m, F &f, const flags fl) {
+  using S = tuple<uintE, data>;
+  long n = indices.n;
+  S* outEdges;
+  long outEdgeCount = 0;
+
+  if (should_output(fl)) {
+    uintT* offsets = degrees;
+    outEdgeCount = sequence::plusScan(offsets, offsets, m);
+    outEdges = newA(S, outEdgeCount);
+    auto g = get_emsparse_gen<data>(outEdges);
+    parallel_for (size_t i = 0; i < m; i++) {
+      uintT v = indices.vtx(i), o = offsets[i];
+      vertex vert = frontierVertices[i];
+      vert.decodeOutNghSparse(v, o, f, g);
+    }
+  } else {
+    auto g = get_emsparse_nooutput_gen<data>();
+    parallel_for (size_t i = 0; i < m; i++) {
+      uintT v = indices.vtx(i);
+      vertex vert = frontierVertices[i];
+      vert.decodeOutNghSparse(v, 0, f, g);
+    }
+  }
+
+  if (should_output(fl)) {
+    S* nextIndices = newA(S, outEdgeCount);
+    if (fl & remove_duplicates) {
+      if (GA.flags == NULL) {
+        GA.flags = newA(uintE, n);
+        parallel_for(long i=0;i<n;i++) { GA.flags[i]=UINT_E_MAX; }
+      }
+      auto get_key = [&] (size_t i) -> uintE& { return std::get<0>(outEdges[i]); };
+      remDuplicates(get_key, GA.flags, outEdgeCount, n);
+    }
+    auto p = [] (tuple<uintE, data>& v) { return std::get<0>(v) != UINT_E_MAX; };
+    size_t nextM = pbbs::filterf(outEdges, nextIndices, outEdgeCount, p);
+    free(outEdges);
+    return vertexSubsetData<data>(n, nextM, nextIndices);
+  } else {
+    return vertexSubsetData<data>(n);
+  }
+}
+
+
+
 template <class data, class vertex, class VS, class F>
 vertexSubsetData<data> edgeMapSparse_no_filter(graph<vertex>& GA,
     vertex* frontierVertices, VS& indices, uintT* offsets, uintT m, F& f,

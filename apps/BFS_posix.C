@@ -41,6 +41,8 @@ struct BFS_F {
 struct thread_info{
 	int tid;
 	int thread_num;
+	long vertices;
+	uintE* Parents;
 };
 
 typedef struct thread_info t_info;
@@ -67,14 +69,35 @@ inline void *BFS_worker(void *argv )
 	t_info *t = (t_info*) argv;
 	int thread_num = t->thread_num;
 	int id = t->tid;
+	long vertices = t->vertices;  // Read thread's private info 
+	uintE* Parents;
+	Parents = t->Parents;
+	
+
+	int chunk;
+	chunk = vertices / thread_num; 
+
+	long start_vertex; 
+	long end_vertex;
+
+	start_vertex = chunk*id;
+	end_vertex = chunk*id + chunk - 1; // Calculate chunk and vertices 
+	
+	
+	for(long i=start_vertex; i <= end_vertex; i++) Parents[i] = UINT_E_MAX;
+
+      
+	fprintf(stdout,"[%d] Start = %d End = %d \n ", id, start_vertex , end_vertex);	
+		
+	
+
 	setaffinity_oncpu(id);
-	printf("Tid = %d Argv = %p \n ", id, argv );
 
 }
 
 
 
-inline pthread_t * spawn_threads(int thread_num)
+inline pthread_t * spawn_threads(int thread_num, int n, uintE* Parents)
 {
 
 	pthread_t * thread =(pthread_t *) malloc(sizeof(pthread_t)*thread_num);
@@ -85,6 +108,8 @@ inline pthread_t * spawn_threads(int thread_num)
 		//printf("t address = %p\n", &t);
 		t[i].tid = i;
 		t[i].thread_num = thread_num;
+		t[i].vertices = n;
+		t[i].Parents = Parents;
 		int ret = pthread_create(&thread[i], NULL,BFS_worker,(void*) &t[i]);
 		if(ret != 0) {
 			printf ("Create pthread error!\n");
@@ -105,11 +130,12 @@ template <class vertex>
 void Compute(graph<vertex>& GA, commandLine P) {
 	long start = P.getOptionLongValue("-r",0);
 	long n = GA.n;
-	pthread_t* t = spawn_threads(10);
-	join_threads(t,10);
+
 	//creates Parents array, initialized to all -1, except for start
 	uintE* Parents = newA(uintE,n);
-	parallel_for(long i=0;i<n;i++) Parents[i] = UINT_E_MAX;
+	pthread_t* t = spawn_threads(4,Parents);
+	join_threads(t,4);
+	//parallel_for(long i=0;i<n;i++) Parents[i] = UINT_E_MAX;
 	Parents[start] = start;
 	vertexSubset Frontier(n,start); //creates initial frontier
 	while(!Frontier.isEmpty()){ //loop until frontier is empty
